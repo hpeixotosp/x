@@ -1,0 +1,61 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH to Droplet
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            set -e
+            sudo apt-get update -y
+            sudo apt-get install -y build-essential curl git python3
+            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+            sudo npm install -g pm2
+
+            REPO_DIR=/var/www/x-app
+            if [ ! -d "$REPO_DIR/.git" ]; then
+              sudo mkdir -p $REPO_DIR
+              sudo chown $USER:$USER $REPO_DIR
+              git clone https://github.com/hpeixotosp/x $REPO_DIR
+            fi
+
+            cd $REPO_DIR
+            git fetch --all
+            git checkout main
+            git pull origin main
+
+            # Write environment variables from GitHub Secrets
+            cat > .env << 'EOF'
+            DATABASE_URL=file:./prisma/dev.db
+            X_APP_KEY=${{ secrets.X_APP_KEY }}
+            X_APP_SECRET=${{ secrets.X_APP_SECRET }}
+            X_ACCESS_TOKEN=${{ secrets.X_ACCESS_TOKEN }}
+            X_ACCESS_SECRET=${{ secrets.X_ACCESS_SECRET }}
+            X_MENTION_HANDLE=${{ secrets.X_MENTION_HANDLE }}
+            X_DEFAULT_MENTION=${{ secrets.X_DEFAULT_MENTION }}
+            NEXT_RUNTIME=nodejs
+            PORT=3000
+            EOF
+
+            npm ci
+            npx prisma generate
+            npx prisma migrate deploy
+            npm run build
+
+            # Start or reload app with PM2
+            if pm2 describe x-app > /dev/null; then
+              pm2 reload x-app
+            else
+              pm2 start "npm run start" --name x-app --time
+            fi
+            pm2 save
