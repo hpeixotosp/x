@@ -1,0 +1,61 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Topic {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  contents    Content[]
+  schedules   Schedule[]
+  createdAt   DateTime @default(now())
+}
+
+model Content {
+  id        Int      @id @default(autoincrement())
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topicId   Int
+  text      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  posts     Post[]
+}
+
+model Schedule {
+  id            Int      @id @default(autoincrement())
+  topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topicId       Int
+  frequencyCron String   // expressão cron
+  mentionHandle String   // @conta a ser marcada
+  isActive      Boolean  @default(true)
+  nextRunAt     DateTime?
+  createdAt     DateTime @default(now())
+  posts         Post[]
+}
+
+model Post {
+  id          Int      @id @default(autoincrement())
+  schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduleId  Int
+  content     Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  contentId   Int
+  status      PostStatus @default(PENDING)
+  error       String?
+
+  postedAt    DateTime?
+  createdAt   DateTime @default(now())
+}
+
+enum PostStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
